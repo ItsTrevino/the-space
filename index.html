@@ -1,48 +1,202 @@
 <!doctype html>
 <html lang="sv">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Three test</title>
-<style>html,body,#app{height:100%;margin:0}#app{height:100vh}</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>3D-rum</title>
+  <style>
+    html,body,#app { height:100%; margin:0; }
+    #app { width:100%; height:100vh; background:#f5f5f5; }
+  </style>
+  <!-- Three.js (globala builds) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
-<div id="app"></div>
+  <div id="app"></div>
 
-<!-- Ladda Three.js -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script>
+  (function(){
+    /* ===== Konfig enligt din skiss ===== */
+    const CONF = {
+      room: { width: 4.0, depth: 4.1, height: 3.1, wallThickness: 0.3 },
+      surfaces: { wallColor: 0xeeeeee, ceilingColor: 0xeeeeee, floorColor: 0x111111 },
+      windows: [
+        { wall:"back", centerX:-1.0, width:1.5, bottom:0.65, height:2.35, recess:0.4 },
+        { wall:"back", centerX: 1.0, width:1.5, bottom:0.65, height:2.35, recess:0.4 },
+      ],
+      openingsRight: { height:2.1, width:1.0, gapBetween:1.0 }, // IN/UT med 1 m vägg emellan
+      shopPortal: { color:0x9aa0a6, url:"https://SHOP_URL_HERE" }, // <-- BYT
+      stairs: { steps:5, width:2.2, rise:0.18, depth:0.35, offsetFromWall:0.5 },
+      intro:  { sweepSeconds:3.2, enterSeconds:0.9 }
+    };
 
-<script>
-const el = document.getElementById('app');
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0066ff); // blå bakgrund = vi ser att scenen ritas
+    const el = document.getElementById("app");
+    const W=CONF.room.width, D=CONF.room.depth, H=CONF.room.height, WT=CONF.room.wallThickness;
+    const HALF_W=W/2, HALF_D=D/2;
 
-const camera = new THREE.PerspectiveCamera(60, el.clientWidth/el.clientHeight, 0.1, 100);
-camera.position.set(2.5, 1.8, 3.5);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf5f5f5);
 
-const renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(el.clientWidth, el.clientHeight);
-el.appendChild(renderer.domElement);
+    const camera = new THREE.PerspectiveCamera(60, el.clientWidth/el.clientHeight, 0.05, 200);
+    camera.position.set(2.8,1.1,5.5);
 
-// ljus + röd kub
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
-const box = new THREE.Mesh(
-  new THREE.BoxGeometry(1,1,1),
-  new THREE.MeshStandardMaterial({color:0xff0000})
-);
-scene.add(box);
+    const renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
+    renderer.setSize(el.clientWidth, el.clientHeight);
+    el.appendChild(renderer.domElement);
 
-function tick(){
-  box.rotation.y += 0.01;
-  renderer.render(scene, camera);
-  requestAnimationFrame(tick);
-}
-tick();
+    // Ljus
+    scene.add(new THREE.HemisphereLight(0xffffff,0x7a7a7a,0.9));
+    const dir = new THREE.DirectionalLight(0xffffff,0.85); dir.position.set(4,6,3); scene.add(dir);
 
-addEventListener('resize', () => {
-  camera.aspect = el.clientWidth/el.clientHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(el.clientWidth, el.clientHeight);
-});
-</script>
+    // Material
+    const matWall = new THREE.MeshStandardMaterial({ color: CONF.surfaces.wallColor, roughness:0.95 });
+    const matCeil = new THREE.MeshStandardMaterial({ color: CONF.surfaces.ceilingColor, roughness:0.95 });
+    const matFloor= new THREE.MeshStandardMaterial({ color: CONF.surfaces.floorColor, roughness:1.0 });
+
+    // Golv & tak
+    const floor=new THREE.Mesh(new THREE.PlaneGeometry(W,D),matFloor);
+    floor.rotation.x=-Math.PI/2; floor.position.set(0,0,-HALF_D); scene.add(floor);
+    const ceil=new THREE.Mesh(new THREE.PlaneGeometry(W,D),matCeil);
+    ceil.rotation.x= Math.PI/2; ceil.position.set(0,H,-HALF_D); scene.add(ceil);
+
+    // Väggar (byggs som segment runt öppningar)
+    function addWallSegments(axis,pos,length,height,opens){
+      const g=new THREE.Group(), holes=(opens||[]).slice().sort((a,b)=>a.center-b.center);
+      let cursor=-length/2;
+      function seg(w){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,height,WT),matWall);
+        if(axis==="z"){ m.position.set(cursor+w/2,height/2,pos); }
+        else { m.position.set(pos,height/2,cursor+w/2); m.rotation.y=Math.PI/2; }
+        g.add(m); cursor+=w; }
+      holes.forEach(o=>{
+        const left=(o.center-o.width/2)-cursor; if(left>0.001) seg(left);
+        const overH=height-(o.bottom+o.height);
+        if(overH>0.001){
+          const top=new THREE.Mesh(new THREE.BoxGeometry(o.width,overH,WT),matWall);
+          if(axis==="z"){ top.position.set(o.center,o.bottom+o.height+overH/2,pos); }
+          else { top.position.set(pos,o.bottom+o.height+overH/2,o.center); top.rotation.y=Math.PI/2; }
+          g.add(top);
+        }
+        cursor=o.center+o.width/2;
+      });
+      const right=length/2-cursor; if(right>0.001) seg(right);
+      scene.add(g); return g;
+    }
+
+    // Fönsternischer (recess)
+    function addRecessedWindow(w){
+      const glass=new THREE.Mesh(new THREE.PlaneGeometry(w.width,w.height),
+        new THREE.MeshPhysicalMaterial({ color:0xffffff, roughness:0.15, transmission:0.9, transparent:true }));
+      const y=w.bottom+w.height/2, zFront=-D-WT/2+w.recess; glass.position.set(w.centerX,y,zFront);
+      const sideMat=new THREE.MeshStandardMaterial({ color: CONF.surfaces.wallColor, roughness:0.95 });
+      const sideL=new THREE.Mesh(new THREE.BoxGeometry(0.04,w.height,w.recess),sideMat);
+      const sideR=sideL.clone(), top=new THREE.Mesh(new THREE.BoxGeometry(w.width,0.04,w.recess),sideMat);
+      const sill=top.clone();
+      sideL.position.set(w.centerX-w.width/2,y,zFront+w.recess/2);
+      sideR.position.set(w.centerX+w.width/2,y,zFront+w.recess/2);
+      top.position.set(w.centerX,y+w.height/2,zFront+w.recess/2);
+      sill.position.set(w.centerX,y-w.height/2,zFront+w.recess/2);
+      const grp=new THREE.Group(); grp.add(glass,sideL,sideR,top,sill); scene.add(grp);
+    }
+
+    // Front & Back
+    addWallSegments("z", 0,   W, H, []);
+    const backOpens = CONF.windows.map(w=>({center:w.centerX,bottom:w.bottom,width:w.width,height:w.height}));
+    addWallSegments("z", -D,  W, H, backOpens);
+
+    // Left
+    addWallSegments("x", -W/2, D, H, []);
+
+    // Right (IN/UT)
+    const oW=CONF.openingsRight.width, oH=CONF.openingsRight.height, GAP=CONF.openingsRight.gapBetween;
+    const centerGap=GAP+oW, midZ=-HALF_D; const INz=midZ-centerGap/2, UTz=midZ+centerGap/2;
+    addWallSegments("x",  W/2, D, H, [
+      {center:INz,bottom:0,width:oW,height:oH},
+      {center:UTz,bottom:0,width:oW,height:oH},
+    ]);
+
+    // Portaler (IN = grå markering, UT = klickbar till butik)
+    const clickTargets=[];
+    function addPortalOnRight(centerZ,w,h,color,clickable,onClick){
+      const panel=new THREE.Mesh(new THREE.PlaneGeometry(w*0.98,h*0.98),
+        new THREE.MeshStandardMaterial({color,roughness:0.9,transparent:true,opacity:0.9}));
+      panel.position.set(W/2+0.02,h/2,centerZ); panel.rotation.y=Math.PI/2; scene.add(panel);
+      if(clickable){
+        const hit=new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({visible:false}));
+        hit.position.copy(panel.position); hit.rotation.copy(panel.rotation);
+        hit.userData.onClick=onClick; clickTargets.push(hit); scene.add(hit);
+      }
+    }
+    addPortalOnRight(INz,oW,oH,0xb0b0b0,false,null);
+    addPortalOnRight(UTz,oW,oH,CONF.shopPortal.color,true,()=>window.open(CONF.shopPortal.url,"_blank"));
+
+    // Lägg in fönster
+    CONF.windows.forEach(addRecessedWindow);
+
+    // Trappa mot IN
+    (function(){
+      const s=CONF.stairs, g=new THREE.Group();
+      const baseX=W/2 + s.offsetFromWall + s.depth/2, baseZ=INz;
+      for(let i=0;i<s.steps;i++){
+        const step=new THREE.Mesh(new THREE.BoxGeometry(s.width,s.rise,s.depth),
+          new THREE.MeshStandardMaterial({color:0xdedede,roughness:0.95}));
+        step.position.set(baseX - i*s.depth,(i+0.5)*s.rise,baseZ); g.add(step);
+      } scene.add(g);
+    })();
+
+    // Orbit-kontroll + intro-kamera
+    const controls=new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enabled=false; controls.enablePan=false;
+    controls.target.set(0,1.3,-HALF_D);
+    controls.minDistance=1.0; controls.maxDistance=Math.max(W,D); controls.maxPolarAngle=Math.PI*0.75;
+
+    let phase=0, t=0, T_SWEEP=CONF.intro.sweepSeconds, T_ENTER=CONF.intro.enterSeconds;
+    function eio(q){return q<0.5?2*q*q:-1+(4-2*q)*q;}
+    function intro(dt){
+      if(phase===0){
+        t=Math.min(1,t+dt/T_SWEEP); const k=eio(t);
+        const startX=W/2+3.5, endX=W/2+0.6, x=startX+(endX-startX)*k;
+        const y=1.0+0.4*Math.sin(k*Math.PI), z=INz+0.8*Math.sin(k*Math.PI*0.5);
+        camera.position.set(x,y,z); camera.lookAt(W/2,1.2,INz);
+        if(t>=1){phase=1;t=0;}
+      } else if(phase===1){
+        t=Math.min(1,t+dt/T_ENTER); const k=eio(t);
+        const from=new THREE.Vector3(W/2+0.6,1.2,INz), to=new THREE.Vector3(W/2-1.2,1.2,INz);
+        camera.position.copy(from.lerp(to,k)); camera.lookAt(0,1.3,-HALF_D);
+        if(t>=1){phase=2; controls.enabled=true;}
+      }
+    }
+
+    // Klick (UT)
+    const ray=new THREE.Raycaster(), mouse=new THREE.Vector2();
+    renderer.domElement.addEventListener("click", e=>{
+      const r=renderer.domElement.getBoundingClientRect();
+      mouse.x=((e.clientX-r.left)/r.width)*2-1; mouse.y=-((e.clientY-r.top)/r.height)*2+1;
+      ray.setFromCamera(mouse,camera);
+      const hits=ray.intersectObjects(clickTargets,true);
+      if(hits.length && hits[0].object.userData.onClick) hits[0].object.userData.onClick();
+    });
+
+    // Loop
+    let last=performance.now();
+    function tick(now){
+      const dt=Math.min(0.033,(now-last)/1000); last=now;
+      if(phase!==2) intro(dt);
+      if(controls.enabled) controls.update();
+      renderer.render(scene,camera);
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    // Resize
+    function resize(){
+      const w=el.clientWidth||innerWidth, h=el.clientHeight||innerHeight;
+      camera.aspect=w/h; camera.updateProjectionMatrix(); renderer.setSize(w,h);
+    }
+    addEventListener('resize', resize);
+    try{ new ResizeObserver(resize).observe(el); }catch(e){}
+  })();
+  </script>
 </body>
 </html>
