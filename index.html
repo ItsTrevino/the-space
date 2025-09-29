@@ -1,28 +1,9 @@
-<!doctype html>
-<html lang="sv">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>3D-rummet – interiör + debug</title>
-<style>
-  html,body{height:100%;margin:0;background:#111}
-  canvas{display:block;width:100vw;height:100vh}
-  #dbg{position:fixed;left:8px;top:8px;background:rgba(0,0,0,.55);color:#0f0;
-       font:12px/1.4 system-ui;padding:8px 10px;border-radius:6px;white-space:pre}
-</style>
-</head>
-<body>
-<div id="dbg">init…</div>
-
-<!-- Three.js -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<!-- OrbitControls -->
-<script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
-
 <script>
 const W=4, D=4.1, H=3;
 const dbg = document.getElementById('dbg');
 const log = (k,v)=>{ dbg.textContent = (dbg.textContent.split('\n').filter(s=>!s.startsWith(k+':')).concat(`${k}: ${v}`)).join('\n'); };
 
+// ----- Scen -----
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xdddddd);
 
@@ -62,36 +43,49 @@ const box = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5),
   new THREE.MeshStandardMaterial({color:0xff3355}));
 box.position.set(0,0.25,-D/2); scene.add(box);
 
-// === OrbitControls (med debug) ===
-log('OrbitControlsLoaded', typeof THREE.OrbitControls === 'function');
-
-let controls = null;
-if (typeof THREE.OrbitControls === 'function') {
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enablePan   = false;
-  controls.enableZoom  = true;      // zooma med scroll
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.07;
-  controls.rotateSpeed   = 0.9;
-  controls.target.set(0,1.5,-1.5);
-  log('ControlsActive', true);
-} else {
-  log('ControlsActive', false);
-}
-
-// Event-debug: ser canvasen pekevenemang?
+// ---- Diagnostik för input ----
 let pd=0, mv=0, wh=0;
 const canvas = renderer.domElement;
 canvas.addEventListener('pointerdown', ()=>{ pd++; log('pointerdown', pd); });
 canvas.addEventListener('pointermove', ()=>{ mv++; log('pointermove', mv); });
 canvas.addEventListener('wheel',       ()=>{ wh++; log('wheel', wh); }, {passive:true});
 
-// fallback: lyssna även på window (om något täcker canvas)
-window.addEventListener('pointerdown', ()=>{ pd++; log('win.pointerdown', pd); });
-window.addEventListener('pointermove', ()=>{ mv++; log('win.pointermove', mv); });
-window.addEventListener('wheel',       ()=>{ wh++; log('win.wheel', wh); }, {passive:true});
+// ----- Ladda OrbitControls säkert -----
+function loadScript(src){
+  return new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src=src; s.onload=resolve; s.onerror=()=>reject(new Error('Kunde inte ladda '+src));
+    document.head.appendChild(s);
+  });
+}
 
-// Render-loop
+let controls=null;
+
+Promise.resolve()
+  // byt CDN till jsDelivr (många blockar unpkg via policy)
+  .then(()=>loadScript('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js'))
+  .then(()=>{
+    log('OrbitControlsLoaded', typeof THREE.OrbitControls === 'function');
+    if (typeof THREE.OrbitControls === 'function') {
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enablePan = false;
+      controls.enableZoom = true;
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.07;
+      controls.rotateSpeed   = 0.9;
+      controls.target.set(0,1.5,-1.5);
+      log('ControlsActive', true);
+    } else {
+      log('ControlsActive', false);
+    }
+  })
+  .catch(err=>{
+    console.error(err);
+    log('OrbitControlsLoaded', 'false (load error)');
+    log('ControlsActive', false);
+  });
+
+// ----- Render-loop -----
 function loop(){
   requestAnimationFrame(loop);
   box.rotation.y += 0.01;
@@ -107,5 +101,3 @@ addEventListener('resize', ()=>{
   renderer.setSize(innerWidth, innerHeight);
 });
 </script>
-</body>
-</html>
