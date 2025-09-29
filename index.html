@@ -1,11 +1,50 @@
 <!doctype html>
-<html><head>
-  <meta charset="utf-8">
-  <title>Sanity test</title>
-  <style>
-    html,body{height:100%;margin:0}
-    body{background:#e6004c;display:grid;place-items:center;
-         color:#fff;font:700 32px/1 system-ui}
-  </style>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D-test</title>
+<style>html,body,#app{margin:0;height:100%;background:#222}</style>
 </head>
-<body>HTML funkar 🎉</body></html>
+<body>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+const app = document.getElementById('app');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0066ff);          // blå bakgrund
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(2.5,1.8,3.5);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+app.appendChild(renderer.domElement);
+
+// Ljus
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
+
+// Röd kub
+const box = new THREE.Mesh(
+  new THREE.BoxGeometry(1,1,1),
+  new THREE.MeshStandardMaterial({color:0xff0000})
+);
+scene.add(box);
+
+// Animation
+function animate(){
+  requestAnimationFrame(animate);
+  box.rotation.y += 0.01;
+  renderer.render(scene,camera);
+}
+animate();
+
+// Responsiv
+addEventListener('resize',()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
