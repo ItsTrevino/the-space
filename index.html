@@ -1,80 +1,66 @@
 <!doctype html>
 <html lang="sv">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Diagnos – JS & Three</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D-rummet</title>
 <style>
-  html,body{height:100%;margin:0}
-  #app{min-height:100%;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;font:16px system-ui}
-  .ok{color:#0a7d00}.bad{color:#b00020}
-  canvas{border:1px solid #ddd;max-width:90vw;max-height:60vh}
+  html,body{height:100%;margin:0;background:#111}
+  canvas{display:block;width:100vw;height:100vh}
 </style>
 </head>
 <body>
-<div id="app"><div>Startar diagnos…</div></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
 <script>
-(function(){
-  const root = document.getElementById('app');
-  const log = (txt, ok=true) => {
-    const p = document.createElement('div');
-    p.className = ok ? 'ok' : 'bad';
-    p.textContent = (ok ? '✔︎ ' : '✖︎ ') + txt;
-    root.appendChild(p);
-  };
+const W = 4;      // rumsbredd (meter)
+const D = 4.1;    // rumslängd
+const H = 3;      // takhöjd
+const WT = 0.25;  // väggtjocklek
 
-  // 1) Inline-JS körs?
-  log('Inline-JavaScript körs');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xdddddd);
 
-  // 2) Rita i 2D-canvas utan Three.js
-  const c = document.createElement('canvas');
-  c.width = 400; c.height = 250;
-  const cx = c.getContext('2d');
-  cx.fillStyle = '#ff3b7b';
-  cx.fillRect(0,0,c.width,c.height);
-  cx.fillStyle = '#fff';
-  cx.font = '20px system-ui';
-  cx.fillText('Canvas 2D OK', 120, 130);
-  root.appendChild(c);
-  log('Canvas 2D ritade utan fel');
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(4, 2, 6);
+camera.lookAt(0,1.5,0);
 
-  // 3) Ladda Three.js dynamiskt
-  function load(src){
-    return new Promise((res, rej)=>{
-      const s = document.createElement('script');
-      s.src = src; s.onload = res; s.onerror = ()=>rej(new Error('Kunde inte ladda '+src));
-      document.head.appendChild(s);
-    });
-  }
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
 
-  Promise.resolve()
-    .then(()=>load('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js'))
-    .then(()=>{
-      log('Three.js script inläst');
-      // Skapa en enkel scen med blå bakgrund + röd kub
-      const wrap = document.createElement('div');
-      root.appendChild(wrap);
-      const scene = new THREE.Scene(); scene.background = new THREE.Color(0x6aa9ff);
-      const camera = new THREE.PerspectiveCamera(60, 400/250, 0.1, 100);
-      camera.position.set(2.5,1.8,3.5);
-      const renderer = new THREE.WebGLRenderer({antialias:true});
-      renderer.setSize(400,250);
-      wrap.appendChild(renderer.domElement);
-      scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
-      const box = new THREE.Mesh(
-        new THREE.BoxGeometry(1,1,1),
-        new THREE.MeshStandardMaterial({color:0xff0000})
-      );
-      scene.add(box);
-      (function tick(){ box.rotation.y+=0.01; renderer.render(scene,camera); requestAnimationFrame(tick); })();
-      log('Three.js renderar (blå bakgrund + röd kub ska synas)');
-    })
-    .catch(err=>{
-      console.error(err);
-      log(err.message || String(err), false);
-      log('Testa byta CDN till unpkg i koden om detta steg faller.', false);
-    });
-})();
-</script>
-</body>
-</html>
+// Ljus
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
+scene.add(new THREE.DirectionalLight(0xffffff, 0.5));
+
+// Material
+const matWall = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95});
+const matFloor = new THREE.MeshStandardMaterial({color:0x111111, roughness:1});
+
+// Golv
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), matFloor);
+floor.rotation.x = -Math.PI/2;
+scene.add(floor);
+
+// Väggar
+function wall(w, h, d, x, y, z, ry){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), matWall);
+  m.position.set(x,y,z);
+  if(ry) m.rotation.y = ry;
+  scene.add(m);
+}
+
+// Fram / Bak
+wall(W, H, WT, 0, H/2, -D/2);        // bak
+wall(W, H, WT, 0, H/2,  D/2);        // fram
+// Vänster / Höger
+wall(D, H, WT, -W/2, H/2, 0, Math.PI/2);
+wall(D, H, WT,  W/2, H/2, 0, Math.PI/2);
+// Tak
+const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(W,D), matWall);
+ceiling.rotation.x = Math.PI/2;
+ceiling.position.y = H;
+scene.add(ceiling);
+
+// Testkub i mitten
+const box = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5),
