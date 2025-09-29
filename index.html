@@ -55,122 +55,114 @@ back.position.set(0,H/2,-D); scene.add(back);
 const leftW=new THREE.Mesh(new THREE.PlaneGeometry(D,H),matWall);
 leftW.rotation.y= Math.PI/2; leftW.position.set(-W/2,H/2,-D/2); scene.add(leftW);
 
-/* ============== HÖGERVÄGG MED RÄTTA FÖNSTER ============== */
-/* 1) Skapa alphaMap (hål) med valv rätt väg och nisch utåt (glas bakom väggen) */
-function makeRightWallAlpha(){
-  const S=1024, cvs=document.createElement('canvas'); cvs.width=cvs.height=S;
-  const ctx=cvs.getContext('2d');
-  // Full vägg (vitt = opak)
-  ctx.fillStyle='#fff'; ctx.fillRect(0,0,S,S);
+<!-- ================== HÖGERVÄGG: RIKTIGA HÅL + NISCH ================== -->
+<script>
+// ---- fönsterparametrar (meter)
+const F_BREDD = 1.5;
+const F_HOJD  = 2.35;
+const F_SMYG  = 0.40;   // nischdjup UTÅT
+const F_SILL  = 0.65;   // underkant från golv
+const VAGG_TJ = 0.30;   // väggtjocklek
+const OFF_Z   = 1.0;    // centrumavstånd längs väggen mellan fönstren
 
-  // Mappning meter -> pixel för högerväggen (bredd=D längs X-UV, höjd=H längs Y-UV)
-  const xFromZ = z => ((z + D)/D) * S;       // z=-D .. 0  ->  x=0 .. S
-  const yFromY = y => (y/H) * S;             // y=0..H      ->  y=0..S  (OBS ej inverterad)
+// 1) Grundshape för väggen (i 2D: bredd=D, höjd=H)
+const wallShape = new THREE.Shape();
+wallShape.moveTo(-D/2, 0);
+wallShape.lineTo( D/2, 0);
+wallShape.lineTo( D/2, H);
+wallShape.lineTo(-D/2, H);
+wallShape.closePath();
 
-  function drawArched(centerZ){
-    const r=WIN_W/2, straightH=WIN_H - r;
-    const xC=xFromZ(centerZ);
-    const y0=yFromY(SILL);                // botten
-    const yTopRect=yFromY(SILL + straightH);
+// 2) Skapa två hål (valv rätt väg) och lägg som holes på väggen
+function makeArchedPath(cx, bottomY, width, height){
+  const r = width/2;
+  const straightH = height - r;
+  const yTop = bottomY + straightH;
 
-    // Fönster-form = rektangel + valv ovanpå
-    ctx.save();
-    ctx.beginPath();
-    // Rektangeln
-    ctx.rect(xC - (WIN_W/D)*S/2, yTopRect, (WIN_W/D)*S, (yFromY(SILL+straightH+0.0001)-yTopRect));
-    // Valvet (halvcirkel uppåt)
-    const Rpx=(r/D)*S;
-    ctx.arc(xC, yTopRect, Rpx, Math.PI, 0, false);
-    ctx.closePath();
-
-    // Stansa HÅL (destination-out)
-    ctx.globalCompositeOperation='destination-out';
-    ctx.fillStyle='#000'; ctx.fill();
-    ctx.restore();
-  }
-
-  drawArched(-D/2 - WINDOW_SPACING);
-  drawArched(-D/2 + WINDOW_SPACING);
-
-  const tex=new THREE.CanvasTexture(cvs);
-  tex.flipY=false; tex.colorSpace=THREE.SRGBColorSpace;
-  return tex;
+  const p = new THREE.Path();
+  p.moveTo(cx - width/2, bottomY);      // start nere vänster
+  p.lineTo(cx + width/2, bottomY);      // bottenkant
+  p.lineTo(cx + width/2, yTop);         // upp höger
+  // halvcirkel uppåt överst
+  p.absarc(cx, yTop, r, 0, Math.PI, true);
+  p.lineTo(cx - width/2, yTop);
+  p.closePath();
+  return p;
 }
+const z1 = -OFF_Z, z2 = +OFF_Z; // mätt från väggens mitt
+wallShape.holes.push( makeArchedPath(z1, F_SILL, F_BREDD, F_HOJD) );
+wallShape.holes.push( makeArchedPath(z2, F_SILL, F_BREDD, F_HOJD) );
 
-// Själva väggen med hål
-const rightAlpha=makeRightWallAlpha();
-const rightMat=new THREE.MeshStandardMaterial({
-  color:0xffffff, roughness:0.95, side:THREE.DoubleSide, transparent:true, alphaMap:rightAlpha
+// 3) Extrudera väggen till “solid” med tjocklek VAGG_TJ
+const wallGeom = new THREE.ExtrudeGeometry(wallShape, {
+  depth: VAGG_TJ,
+  bevelEnabled: false,
+  curveSegments: 64
 });
-const rightWall=new THREE.Mesh(new THREE.PlaneGeometry(D,H), rightMat);
-rightWall.rotation.y = -Math.PI/2;
-rightWall.position.set(W/2, H/2, -D/2);
-scene.add(rightWall);
+// Extrudering sker längs +Z i geometri-lokalt; vi vill ha tjocklek längs +X ut ur rummet.
+// Rotera så att geometri-Y -> värld-Y, geometri-X -> värld-Z
+wallGeom.rotateY(-Math.PI/2);
+// Centrera och flytta innesidan så att inre fasad ligger i x = W/2
+wallGeom.translate(W/2 - VAGG_TJ, 0, -D/2);
 
-/* 2) Glas och nisch – LIGGER UTANFÖR VÄGGEN (+X), dvs bort från rummet */
-function makeArchedShape(w,h){
-  const r=w/2, straightH=h-r;
-  const s=new THREE.Shape();
-  s.moveTo(-w/2,0);
-  s.lineTo(w/2,0);
-  s.lineTo(w/2,straightH);
-  s.absellipse(0,straightH, r,r, 0, Math.PI, true); // toppvalv höger->vänster
-  s.lineTo(-w/2,straightH);
+const wallMesh = new THREE.Mesh(wallGeom, new THREE.MeshStandardMaterial({
+  color: 0xffffff, roughness: 0.9
+}));
+scene.add(wallMesh);
+
+// 4) Nisch (“reveal”): ett extruderat skal som går UTÅT (ytterligare F_SMYG)
+const revealGeom = new THREE.ExtrudeGeometry(wallShape, {
+  depth: F_SMYG,
+  bevelEnabled: false,
+  curveSegments: 64
+});
+revealGeom.rotateY(-Math.PI/2);
+revealGeom.translate(W/2, 0, -D/2); // börjar direkt utanför väggen (x = W/2)
+const revealMesh = new THREE.Mesh(revealGeom, new THREE.MeshStandardMaterial({
+  color: 0xf4f4f4, roughness: 0.95
+}));
+scene.add(revealMesh);
+
+// 5) Glas – två arker, placerade längst ut i nischen (x = W/2 + F_SMYG)
+function makeArchedShape(width, height){
+  const r = width/2, straightH = height - r;
+  const s = new THREE.Shape();
+  s.moveTo(-width/2, 0);
+  s.lineTo( width/2, 0);
+  s.lineTo( width/2, straightH);
+  s.absarc(0, straightH, r, 0, Math.PI, true);
+  s.lineTo(-width/2, straightH);
   s.closePath();
   return s;
 }
-
-const glassMat=new THREE.MeshPhysicalMaterial({
-  color:0xffffff, roughness:0.05, metalness:0.0, transmission:0.88, thickness:0.02, transparent:true
+const glassMat = new THREE.MeshPhysicalMaterial({
+  color: 0xffffff, roughness: 0.05, metalness: 0,
+  transmission: 0.9, thickness: 0.02, transparent: true
+});
+[z1, z2].forEach(cz=>{
+  const g = new THREE.ShapeGeometry(makeArchedShape(F_BREDD, F_HOJD), 64);
+  // flytta upp så att botten hamnar på F_SILL
+  g.translate(0, F_SILL, 0);
+  const m = new THREE.Mesh(g, glassMat);
+  // placera i värld: x = insida W/2 + nischdjup + en hårsmån
+  m.position.set(W/2 + F_SMYG + 0.005, 0, cz);
+  m.rotation.y = -Math.PI/2;
+  scene.add(m);
 });
 
-[-D/2 - WINDOW_SPACING, -D/2 + WINDOW_SPACING].forEach(zc=>{
-  const shape=makeArchedShape(WIN_W, WIN_H);
-  const geom=new THREE.ShapeGeometry(shape, 64);
-  geom.translate(0, WIN_H/2, 0);
-
-  // Glas – flyttat UTÅT ( + RECESS )
-  const glass=new THREE.Mesh(geom, glassMat);
-  glass.position.set(W/2 + RECESS, SILL + WIN_H/2, zc);
-  glass.rotation.y = -Math.PI/2;
-  scene.add(glass);
-
-  // Små “smygar” (sneda nischytor) – enkel illusion
-  const reveal = new THREE.Mesh(
-    new THREE.BoxGeometry(RECESS, WIN_H*0.98, WIN_W*0.06),
-    new THREE.MeshStandardMaterial({color:0xf0f0f0, roughness:0.95})
+// 6) “Gatubild” – en plane långt bakom glaset, inte i hörnet
+const streetURL = 'https://images.unsplash.com/photo-1505764706515-aa95265c5abc?q=80&w=1600&auto=format&fit=crop';
+new THREE.TextureLoader().load(streetURL, tex=>{
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const street = new THREE.Mesh(
+    new THREE.PlaneGeometry(8, 5),             // större yta
+    new THREE.MeshBasicMaterial({map: tex})
   );
-  reveal.position.set(W/2 + RECESS/2, SILL + WIN_H/2, zc);
-  reveal.rotation.y = -Math.PI/2;
-  scene.add(reveal);
+  street.position.set(W/2 + F_SMYG + 1.0, 1.8, 0);  // 1 meter utanför nisch, centrerad mellan fönstren
+  street.rotation.y = -Math.PI/2;
+  scene.add(street);
 });
-
-/* ======= Himmel i taket ======= */
-/* Enkel skydome: stor sfär ovanför med gradient + molntextur ritad på canvas */
-function makeSkyTexture(){
-  const S=1024, c=document.createElement('canvas'); c.width=c.height=S;
-  const g=c.getContext('2d');
-
-  // gradient (vertikal): ljusare uppåt
-  const grd=g.createLinearGradient(0,0,0,S);
-  grd.addColorStop(0,'#bfe6ff');   // zenit
-  grd.addColorStop(1,'#e6f5ff');   // horisont
-  g.fillStyle=grd; g.fillRect(0,0,S,S);
-
-  // lätta “molntussar”
-  g.globalAlpha=0.08;
-  g.fillStyle='#ffffff';
-  for(let i=0;i<120;i++){
-    const x=Math.random()*S, y=Math.random()*S*0.7, r=20+Math.random()*60;
-    g.beginPath(); g.ellipse(x,y,r*1.8,r,0,0,Math.PI*2); g.fill();
-  }
-  const tex=new THREE.CanvasTexture(c); tex.colorSpace=THREE.SRGBColorSpace; return tex;
-}
-const skyGeo=new THREE.SphereGeometry(60, 48, 32);
-const skyMat=new THREE.MeshBasicMaterial({map:makeSkyTexture(), side:THREE.BackSide});
-const sky=new THREE.Mesh(skyGeo, skyMat);
-sky.position.set(0, H+10, -D/2); // höj den över taket
-scene.add(sky);
+</script>
 
 /* ======= (Valfritt) “gata” utanför fönstren ======= */
 /* Byt URL här till din riktiga gatubild när du vill. */
