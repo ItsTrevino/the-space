@@ -1,103 +1,130 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>3D-rummet – robust</title>
+  <style>
+    html,body{height:100%;margin:0;background:#111}
+    canvas{display:block;width:100vw;height:100vh}
+    #dbg{position:fixed;left:8px;top:8px;background:rgba(0,0,0,.6);color:#0f0;
+         font:12px/1.4 system-ui;padding:8px 10px;border-radius:6px;white-space:pre}
+  </style>
+</head>
+<body>
+<div id="dbg">init…</div>
+
 <script>
-const W=4, D=4.1, H=3;
 const dbg = document.getElementById('dbg');
 const log = (k,v)=>{ dbg.textContent = (dbg.textContent.split('\n').filter(s=>!s.startsWith(k+':')).concat(`${k}: ${v}`)).join('\n'); };
 
-// ----- Scen -----
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xdddddd);
-
-const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
-camera.position.set(0, 1.5, 1.8);
-camera.lookAt(0, 1.5, -1.5);
-
-const renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(innerWidth, innerHeight);
-document.body.appendChild(renderer.domElement);
-
-// Ljus
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.1));
-const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(3,5,2); scene.add(dir);
-
-// Material
-const matWall  = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95, side:THREE.BackSide});
-const matFloor = new THREE.MeshStandardMaterial({color:0x111111, roughness:1});
-const matCeil  = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95});
-
-// Golv & tak
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), matFloor);
-floor.rotation.x = -Math.PI/2; floor.position.set(0,0,-D/2); scene.add(floor);
-const ceil  = new THREE.Mesh(new THREE.PlaneGeometry(W, D), matCeil);
-ceil.rotation.x  =  Math.PI/2; ceil.position.set(0,H,-D/2); scene.add(ceil);
-
-// Väggar (framvägg utelämnas)
-const back  = new THREE.Mesh(new THREE.PlaneGeometry(W, H), matWall);
-back.position.set(0, H/2, -D); scene.add(back);
-const leftW = new THREE.Mesh(new THREE.PlaneGeometry(D, H), matWall);
-leftW.rotation.y =  Math.PI/2; leftW.position.set(-W/2, H/2, -D/2); scene.add(leftW);
-const rightW= new THREE.Mesh(new THREE.PlaneGeometry(D, H), matWall);
-rightW.rotation.y = -Math.PI/2; rightW.position.set( W/2, H/2, -D/2); scene.add(rightW);
-
-// Röd kub
-const box = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5),
-  new THREE.MeshStandardMaterial({color:0xff3355}));
-box.position.set(0,0.25,-D/2); scene.add(box);
-
-// ---- Diagnostik för input ----
-let pd=0, mv=0, wh=0;
-const canvas = renderer.domElement;
-canvas.addEventListener('pointerdown', ()=>{ pd++; log('pointerdown', pd); });
-canvas.addEventListener('pointermove', ()=>{ mv++; log('pointermove', mv); });
-canvas.addEventListener('wheel',       ()=>{ wh++; log('wheel', wh); }, {passive:true});
-
-// ----- Ladda OrbitControls säkert -----
 function loadScript(src){
   return new Promise((resolve,reject)=>{
     const s=document.createElement('script');
-    s.src=src; s.onload=resolve; s.onerror=()=>reject(new Error('Kunde inte ladda '+src));
+    s.src=src; s.onload=()=>resolve(src); s.onerror=()=>reject(new Error('kunde inte ladda: '+src));
     document.head.appendChild(s);
   });
 }
 
-let controls=null;
-
-Promise.resolve()
-  // byt CDN till jsDelivr (många blockar unpkg via policy)
-  .then(()=>loadScript('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js'))
-  .then(()=>{
-    log('OrbitControlsLoaded', typeof THREE.OrbitControls === 'function');
-    if (typeof THREE.OrbitControls === 'function') {
-      controls = new THREE.OrbitControls(camera, renderer.domElement);
-      controls.enablePan = false;
-      controls.enableZoom = true;
-      controls.enableDamping = true;
-      controls.dampingFactor = 0.07;
-      controls.rotateSpeed   = 0.9;
-      controls.target.set(0,1.5,-1.5);
-      log('ControlsActive', true);
-    } else {
-      log('ControlsActive', false);
+(async function main(){
+  try {
+    // 1) Ladda THREE (med fallback)
+    try {
+      await loadScript('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js');
+    } catch {
+      await loadScript('https://unpkg.com/three@0.160.0/build/three.min.js');
     }
-  })
-  .catch(err=>{
-    console.error(err);
-    log('OrbitControlsLoaded', 'false (load error)');
-    log('ControlsActive', false);
-  });
+    if (!window.THREE) throw new Error('THREE saknas efter laddning');
+    log('ThreeLoaded', 'true');
 
-// ----- Render-loop -----
-function loop(){
-  requestAnimationFrame(loop);
-  box.rotation.y += 0.01;
-  if (controls) controls.update();
-  renderer.render(scene, camera);
-}
-loop();
+    // 2) Sätt upp scenen
+    const W=4, D=4.1, H=3;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xdddddd);
 
-// Resize
-addEventListener('resize', ()=>{
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+    const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
+    camera.position.set(0, 1.5, 1.8);
+    camera.lookAt(0, 1.5, -1.5);
+
+    const renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Ljus
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.1));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(3,5,2); scene.add(dir);
+
+    // Material
+    const matWall  = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95, side:THREE.BackSide});
+    const matFloor = new THREE.MeshStandardMaterial({color:0x111111, roughness:1});
+    const matCeil  = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95});
+
+    // Golv & tak
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), matFloor);
+    floor.rotation.x = -Math.PI/2; floor.position.set(0,0,-D/2); scene.add(floor);
+    const ceil  = new THREE.Mesh(new THREE.PlaneGeometry(W, D), matCeil);
+    ceil.rotation.x  =  Math.PI/2; ceil.position.set(0,H,-D/2); scene.add(ceil);
+
+    // Väggar (framvägg saknas)
+    const back  = new THREE.Mesh(new THREE.PlaneGeometry(W, H), matWall);
+    back.position.set(0, H/2, -D); scene.add(back);
+    const leftW = new THREE.Mesh(new THREE.PlaneGeometry(D, H), matWall);
+    leftW.rotation.y =  Math.PI/2; leftW.position.set(-W/2, H/2, -D/2); scene.add(leftW);
+    const rightW= new THREE.Mesh(new THREE.PlaneGeometry(D, H), matWall);
+    rightW.rotation.y = -Math.PI/2; rightW.position.set( W/2, H/2, -D/2); scene.add(rightW);
+
+    // Testkub
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5),
+                  new THREE.MeshStandardMaterial({color:0xff3355}));
+    box.position.set(0,0.25,-D/2); scene.add(box);
+
+    // 3) Försök ladda OrbitControls (med fallback)
+    let controls = null;
+    try {
+      try {
+        await loadScript('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js');
+      } catch {
+        await loadScript('https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js');
+      }
+      if (typeof THREE.OrbitControls === 'function') {
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enablePan = false;
+        controls.enableZoom = true;
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.07;
+        controls.rotateSpeed   = 0.9;
+        controls.target.set(0,1.5,-1.5);
+        log('OrbitControlsLoaded','true');
+      } else {
+        log('OrbitControlsLoaded','false (klass saknas)');
+      }
+    } catch (e) {
+      log('OrbitControlsLoaded','false (load error)');
+      console.warn(e);
+    }
+
+    // 4) Render-loop
+    function loop(){
+      requestAnimationFrame(loop);
+      box.rotation.y += 0.01;
+      if (controls) controls.update();
+      renderer.render(scene,camera);
+    }
+    loop();
+
+    // Resize
+    addEventListener('resize', ()=>{
+      camera.aspect = innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+  } catch (e){
+    log('FEL', e.message || String(e));
+    console.error(e);
+    document.body.style.background = '#220000';
+  }
+})();
 </script>
+</body>
+</html>
