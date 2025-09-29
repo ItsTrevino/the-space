@@ -2,7 +2,7 @@
 <html lang="sv">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>3D-rummet – interiör</title>
+<title>3D-rummet – interiör (utan controls)</title>
 <style>
   html,body{height:100%;margin:0;background:#111}
   canvas{display:block;width:100vw;height:100vh}
@@ -10,78 +10,55 @@
 </head>
 <body>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
 <script>
-const W=4, D=4.1, H=3;         // mått (meter)
+const W=4, D=4.1, H=3;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xdddddd);
 
 const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
-camera.position.set(0, 1.5, 1.5);      // KAMERA INUTI RUMMET
+camera.position.set(0, 1.5, 1.8);     // i rummet, lite framför mitten
 camera.lookAt(0, 1.5, -1.5);
 
 const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Musstyrning
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.enablePan = false;
-controls.target.set(0, 1.5, -1.5);
-
 // Ljus
 scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.1));
 const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(3,5,2); scene.add(dir);
 
 // Material
-const matWall  = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95, side:THREE.BackSide}); // insidan synlig
+const matWall  = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95, side:THREE.BackSide});
 const matFloor = new THREE.MeshStandardMaterial({color:0x111111, roughness:1});
 const matCeil  = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95});
 
-// Golv
+// Golv & tak
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), matFloor);
-floor.rotation.x = -Math.PI/2;
-floor.position.set(0,0,-D/2);
-scene.add(floor);
+floor.rotation.x = -Math.PI/2; floor.position.set(0,0,-D/2); scene.add(floor);
+const ceil  = new THREE.Mesh(new THREE.PlaneGeometry(W, D), matCeil);
+ceil.rotation.x  =  Math.PI/2; ceil.position.set(0,H,-D/2); scene.add(ceil);
 
-// Tak
-const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D), matCeil);
-ceil.rotation.x =  Math.PI/2;
-ceil.position.set(0,H,-D/2);
-scene.add(ceil);
-
-// Väggar som PLAN (vända inåt). FRAMVÄGG HOPPAS ÖVER.
+// Väggar (framvägg utelämnas)
 const back  = new THREE.Mesh(new THREE.PlaneGeometry(W, H), matWall);
-back.position.set(0, H/2, -D);               // bakre vägg vid z = -D
-scene.add(back);
-
+back.position.set(0, H/2, -D); scene.add(back);
 const leftW = new THREE.Mesh(new THREE.PlaneGeometry(D, H), matWall);
-leftW.rotation.y =  Math.PI/2;
-leftW.position.set(-W/2, H/2, -D/2);
-scene.add(leftW);
+leftW.rotation.y =  Math.PI/2; leftW.position.set(-W/2, H/2, -D/2); scene.add(leftW);
+const rightW= new THREE.Mesh(new THREE.PlaneGeometry(D, H), matWall);
+rightW.rotation.y = -Math.PI/2; rightW.position.set( W/2, H/2, -D/2); scene.add(rightW);
 
-const rightW = new THREE.Mesh(new THREE.PlaneGeometry(D, H), matWall);
-rightW.rotation.y = -Math.PI/2;
-rightW.position.set( W/2, H/2, -D/2);
-scene.add(rightW);
-
-// Testobjekt i mitten (ska synas)
+// Liten röd kub i mitten
 const box = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5),
   new THREE.MeshStandardMaterial({color:0xff3355}));
-box.position.set(0,0.25,-D/2);
-scene.add(box);
+box.position.set(0,0.25,-D/2); scene.add(box);
 
-// Loop
 function animate(){
   requestAnimationFrame(animate);
   box.rotation.y += 0.01;
-  controls.update();
   renderer.render(scene,camera);
 }
 animate();
 
-// Resize
 addEventListener('resize', ()=>{
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
