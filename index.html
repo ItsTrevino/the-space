@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>3D-rummet – välvda fönster</title>
+  <title>3D-rummet – fönster + himmel</title>
   <style>
     html,body{height:100%;margin:0;background:#111}
     canvas{display:block;width:100vw;height:100vh}
@@ -12,242 +12,229 @@
 <body>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script>
-/* ======= Grundmått (meter) ======= */
-const W=4.0, D=4.1, H=3.0;          // rum: bredd, djup, takhöjd
-const WT=0.30;                      // "väggtjocklek" för känsla
-/* Fönster enligt din spec */
-const WIN_W = 1.5;                  // bredd
-const WIN_H = 2.35;                 // total höjd inkl. välvt tak
-const SILL  = 0.65;                 // höjd från golv till fönsterbräda
-const RECESS= 0.40;                 // nischdjup
-const WINDOW_SPACING = 1.0;         // avstånd från rummets mitt (Z) till varje fönsters centrum
+/* ======= Mått (meter) ======= */
+const W=4.0, D=4.1, H=3.0;          // rum
+const WT=0.30;                      // väggtjocklek (visuell)
+const WIN_W=1.5, WIN_H=2.35, SILL=0.65, RECESS=0.40;
+const WINDOW_SPACING=1.0;           // avstånd från rummets mitt (Z)
 
 /* ======= Scen ======= */
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xdddddd);
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0xdddddd);
 
-const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.05, 100);
-const lookTarget = new THREE.Vector3(0, 1.5, -1.5);
-camera.position.set(0, 1.5, 1.8);
+const camera=new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.05, 100);
+const lookTarget=new THREE.Vector3(0,1.5,-1.5);
+camera.position.set(0,1.5,1.8);
 camera.lookAt(lookTarget);
 
-const renderer = new THREE.WebGLRenderer({antialias:true});
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(2, devicePixelRatio||1));
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
 document.body.appendChild(renderer.domElement);
 
-/* Ljus */
-scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.0));
-const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+/* ======= Ljus ======= */
+scene.add(new THREE.HemisphereLight(0xffffff,0x666666,1.1));
+const dir=new THREE.DirectionalLight(0xffffff,0.9);
 dir.position.set(4,6,3);
 scene.add(dir);
 
-/* Material */
-const matWall  = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95, metalness:0.0, side:THREE.BackSide});
-const matFloor = new THREE.MeshStandardMaterial({color:0x111111, roughness:1.0});
-const matCeil  = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95});
+/* ======= Material ======= */
+const matWall = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95, side:THREE.BackSide});
+const matFloor= new THREE.MeshStandardMaterial({color:0x111111, roughness:1.0});
+const matCeil = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.95});
 
-/* Golv och tak */
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), matFloor);
-floor.rotation.x = -Math.PI/2; floor.position.set(0,0,-D/2); scene.add(floor);
-const ceil  = new THREE.Mesh(new THREE.PlaneGeometry(W, D), matCeil);
-ceil.rotation.x =  Math.PI/2;  ceil.position.set(0,H,-D/2);  scene.add(ceil);
+/* ======= Golv & tak ======= */
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(W,D),matFloor);
+floor.rotation.x=-Math.PI/2; floor.position.set(0,0,-D/2); scene.add(floor);
+const ceil=new THREE.Mesh(new THREE.PlaneGeometry(W,D),matCeil);
+ceil.rotation.x=Math.PI/2; ceil.position.set(0,H,-D/2); scene.add(ceil);
 
-/* Bak- & vänstervägg som vanliga plan (insidan synlig) */
-const back  = new THREE.Mesh(new THREE.PlaneGeometry(W, H), matWall);
-back.position.set(0, H/2, -D); scene.add(back);
+/* ======= Bak- & vänstervägg ======= */
+const back=new THREE.Mesh(new THREE.PlaneGeometry(W,H),matWall);
+back.position.set(0,H/2,-D); scene.add(back);
+const leftW=new THREE.Mesh(new THREE.PlaneGeometry(D,H),matWall);
+leftW.rotation.y= Math.PI/2; leftW.position.set(-W/2,H/2,-D/2); scene.add(leftW);
 
-const leftW = new THREE.Mesh(new THREE.PlaneGeometry(D, H), matWall);
-leftW.rotation.y =  Math.PI/2; leftW.position.set(-W/2, H/2, -D/2); scene.add(leftW);
+/* ============== HÖGERVÄGG MED RÄTTA FÖNSTER ============== */
+/* 1) Skapa alphaMap (hål) med valv rätt väg och nisch utåt (glas bakom väggen) */
+function makeRightWallAlpha(){
+  const S=1024, cvs=document.createElement('canvas'); cvs.width=cvs.height=S;
+  const ctx=cvs.getContext('2d');
+  // Full vägg (vitt = opak)
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,S,S);
 
-/* ================== Högervägg med VÄLVDA fönster ==================
-   Vi gör högerväggen som en transparent väggpanel (alphaMap) där fönsterformerna
-   är utskurna. Bakom hålen placerar vi glaset lite "inåt" (RECESS) för nischkänsla.
-=================================================================== */
+  // Mappning meter -> pixel för högerväggen (bredd=D längs X-UV, höjd=H längs Y-UV)
+  const xFromZ = z => ((z + D)/D) * S;       // z=-D .. 0  ->  x=0 .. S
+  const yFromY = y => (y/H) * S;             // y=0..H      ->  y=0..S  (OBS ej inverterad)
 
-/* 1) Rita en alpha-karta på <canvas> med 2 välvda fönster (svart=transparent, vit=vägg) */
-function makeRightWallAlpha() {
-  const cvs = document.createElement('canvas');
-  const S = 1024; cvs.width = cvs.height = S;
-  const ctx = cvs.getContext('2d');
-  // vit full vägg (opak)
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0,0,S,S);
+  function drawArched(centerZ){
+    const r=WIN_W/2, straightH=WIN_H - r;
+    const xC=xFromZ(centerZ);
+    const y0=yFromY(SILL);                // botten
+    const yTopRect=yFromY(SILL + straightH);
 
-  // skala från meter -> canvas
-  // Högerväggens "bredd" i planet = D (längs Z), höjd = H.
-  function zToX(z){ // z går från 0 (fram) till -D (bak). Mappa till canvas X (vänster->höger)
-    const t = (z + D) / D; // z=-D => 0, z=0 => 1
-    return t * S;
-  }
-  function yToY(y){ // y 0..H => canvas  S..0 (uppåt)
-    const t = y / H;
-    return S - t * S;
-  }
-
-  function drawArchedWindow(centerZ){
-    const r = WIN_W/2;                // radie på välv
-    const straightH = WIN_H - r;      // höjd på raka delen
-    const xC = zToX(centerZ);
-    const yBottom = yToY(SILL);
-    const yTopRect = yToY(SILL + straightH);
-    const Rpx = (r / D) * S;          // skala radien till X-axel (väggen mäts längs Z=D)
-    const halfWpx = (WIN_W / D) * S / 2;
-
+    // Fönster-form = rektangel + valv ovanpå
     ctx.save();
     ctx.beginPath();
-    // rektangeln
-    ctx.rect(xC - halfWpx, yTopRect, halfWpx*2, yBottom - yTopRect);
-    // välvet (halvcirkel över rektangeln)
+    // Rektangeln
+    ctx.rect(xC - (WIN_W/D)*S/2, yTopRect, (WIN_W/D)*S, (yFromY(SILL+straightH+0.0001)-yTopRect));
+    // Valvet (halvcirkel uppåt)
+    const Rpx=(r/D)*S;
     ctx.arc(xC, yTopRect, Rpx, Math.PI, 0, false);
     ctx.closePath();
 
-    // "Stansning" = gör fönsterytan transparent i alpha
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = '#000';
-    ctx.fill();
+    // Stansa HÅL (destination-out)
+    ctx.globalCompositeOperation='destination-out';
+    ctx.fillStyle='#000'; ctx.fill();
     ctx.restore();
   }
 
-  // Placera fönster: symmetriskt kring mitten längs Z
-  drawArchedWindow(-D/2 - WINDOW_SPACING); // bakre fönstret
-  drawArchedWindow(-D/2 + WINDOW_SPACING); // främre fönstret
+  drawArched(-D/2 - WINDOW_SPACING);
+  drawArched(-D/2 + WINDOW_SPACING);
 
-  const tex = new THREE.CanvasTexture(cvs);
-  tex.flipY = false;
-  tex.colorSpace = THREE.SRGBColorSpace;
+  const tex=new THREE.CanvasTexture(cvs);
+  tex.flipY=false; tex.colorSpace=THREE.SRGBColorSpace;
   return tex;
 }
 
-/* 2) Bygg högerväggen som ett plan med alphaMap */
-const rightAlpha = makeRightWallAlpha();
-const rightMat = new THREE.MeshStandardMaterial({
-  color: 0xffffff,
-  roughness: 0.95,
-  side: THREE.DoubleSide,
-  transparent: true,
-  alphaMap: rightAlpha
+// Själva väggen med hål
+const rightAlpha=makeRightWallAlpha();
+const rightMat=new THREE.MeshStandardMaterial({
+  color:0xffffff, roughness:0.95, side:THREE.DoubleSide, transparent:true, alphaMap:rightAlpha
 });
-const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(D, H), rightMat);
+const rightWall=new THREE.Mesh(new THREE.PlaneGeometry(D,H), rightMat);
 rightWall.rotation.y = -Math.PI/2;
 rightWall.position.set(W/2, H/2, -D/2);
 scene.add(rightWall);
 
-/* 3) Glas + enkel nisch bakom hålen */
-function makeArchedShape(w, h){
-  const r = w/2;                       // välv-radie
-  const straightH = h - r;
-  const s = new THREE.Shape();
-  // börja nere vänster, gå medurs
-  s.moveTo(-w/2, 0);
-  s.lineTo( w/2, 0);
-  s.lineTo( w/2, straightH);
-  // välvt tak: mittpunkt (0, straightH)
-  s.absellipse(0, straightH, r, r, 0, Math.PI, true); // höger->vänster
-  s.lineTo(-w/2, straightH);
+/* 2) Glas och nisch – LIGGER UTANFÖR VÄGGEN (+X), dvs bort från rummet */
+function makeArchedShape(w,h){
+  const r=w/2, straightH=h-r;
+  const s=new THREE.Shape();
+  s.moveTo(-w/2,0);
+  s.lineTo(w/2,0);
+  s.lineTo(w/2,straightH);
+  s.absellipse(0,straightH, r,r, 0, Math.PI, true); // toppvalv höger->vänster
+  s.lineTo(-w/2,straightH);
   s.closePath();
   return s;
 }
 
-const glassMat = new THREE.MeshPhysicalMaterial({
-  color: 0xffffff,
-  roughness: 0.05,
-  metalness: 0.0,
-  transmission: 0.88,   // ”genomskinlighet”
-  thickness: 0.02,
-  transparent: true
+const glassMat=new THREE.MeshPhysicalMaterial({
+  color:0xffffff, roughness:0.05, metalness:0.0, transmission:0.88, thickness:0.02, transparent:true
 });
 
-// positions längs Z för våra två fönster
-const Zs = [-D/2 - WINDOW_SPACING, -D/2 + WINDOW_SPACING];
-
-// skapa glas och en mörk “nischtub” bakom (enbart rektangulär del – räcker visuellt)
-Zs.forEach(zc=>{
-  const shape = makeArchedShape(WIN_W, WIN_H);
-  const geom  = new THREE.ShapeGeometry(shape, 48);
-
-  // centrera geometrin runt (0, WIN_H/2)
+[-D/2 - WINDOW_SPACING, -D/2 + WINDOW_SPACING].forEach(zc=>{
+  const shape=makeArchedShape(WIN_W, WIN_H);
+  const geom=new THREE.ShapeGeometry(shape, 64);
   geom.translate(0, WIN_H/2, 0);
 
-  // Glaset – ställ det ett stycke in bakom väggen (RECESS)
-  const glass = new THREE.Mesh(geom, glassMat);
-  glass.position.set(W/2 - RECESS, SILL + WIN_H/2, zc);
+  // Glas – flyttat UTÅT ( + RECESS )
+  const glass=new THREE.Mesh(geom, glassMat);
+  glass.position.set(W/2 + RECESS, SILL + WIN_H/2, zc);
   glass.rotation.y = -Math.PI/2;
   scene.add(glass);
 
-  // En mörk “box” bakom hålet som ger skugga i nischen (visuell cheat)
-  const nicheH = WIN_H - (WIN_W/2); // raka delen
-  const niche = new THREE.Mesh(
-    new THREE.BoxGeometry(WIN_W*0.92, nicheH*0.92, RECESS),
-    new THREE.MeshStandardMaterial({color:0xe6e6e6, roughness:0.95})
+  // Små “smygar” (sneda nischytor) – enkel illusion
+  const reveal = new THREE.Mesh(
+    new THREE.BoxGeometry(RECESS, WIN_H*0.98, WIN_W*0.06),
+    new THREE.MeshStandardMaterial({color:0xf0f0f0, roughness:0.95})
   );
-  niche.position.set(W/2 - RECESS/2, SILL + nicheH/2, zc);
-  niche.rotation.y = -Math.PI/2;
-  scene.add(niche);
+  reveal.position.set(W/2 + RECESS/2, SILL + WIN_H/2, zc);
+  reveal.rotation.y = -Math.PI/2;
+  scene.add(reveal);
 });
 
-/* ======= Egna kamerakontroller (drag + scroll + touch) ======= */
-let isDown=false, lastX=0, lastY=0;
-let radius = 2.0, theta = 0, phi = Math.PI/2.2;
-const rMin=1.0, rMax=6.0;
+/* ======= Himmel i taket ======= */
+/* Enkel skydome: stor sfär ovanför med gradient + molntextur ritad på canvas */
+function makeSkyTexture(){
+  const S=1024, c=document.createElement('canvas'); c.width=c.height=S;
+  const g=c.getContext('2d');
 
-function updateCam(){
-  const eps = 0.001;
-  phi = Math.max(eps, Math.min(Math.PI-eps, phi));
-  radius = Math.max(rMin, Math.min(rMax, radius));
-  const x = lookTarget.x + radius * Math.sin(phi) * Math.sin(theta);
-  const y = lookTarget.y + radius * Math.cos(phi);
-  const z = lookTarget.z + radius * Math.sin(phi) * Math.cos(theta);
-  camera.position.set(x,y,z);
-  camera.lookAt(lookTarget);
+  // gradient (vertikal): ljusare uppåt
+  const grd=g.createLinearGradient(0,0,0,S);
+  grd.addColorStop(0,'#bfe6ff');   // zenit
+  grd.addColorStop(1,'#e6f5ff');   // horisont
+  g.fillStyle=grd; g.fillRect(0,0,S,S);
+
+  // lätta “molntussar”
+  g.globalAlpha=0.08;
+  g.fillStyle='#ffffff';
+  for(let i=0;i<120;i++){
+    const x=Math.random()*S, y=Math.random()*S*0.7, r=20+Math.random()*60;
+    g.beginPath(); g.ellipse(x,y,r*1.8,r,0,0,Math.PI*2); g.fill();
+  }
+  const tex=new THREE.CanvasTexture(c); tex.colorSpace=THREE.SRGBColorSpace; return tex;
 }
-renderer.domElement.addEventListener('pointerdown', e=>{isDown=true; lastX=e.clientX; lastY=e.clientY;});
-window.addEventListener('pointerup', ()=>{isDown=false;});
-window.addEventListener('pointermove', e=>{
-  if(!isDown) return;
-  const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
+const skyGeo=new THREE.SphereGeometry(60, 48, 32);
+const skyMat=new THREE.MeshBasicMaterial({map:makeSkyTexture(), side:THREE.BackSide});
+const sky=new THREE.Mesh(skyGeo, skyMat);
+sky.position.set(0, H+10, -D/2); // höj den över taket
+scene.add(sky);
+
+/* ======= (Valfritt) “gata” utanför fönstren ======= */
+/* Byt URL här till din riktiga gatubild när du vill. */
+const streetURL = 'https://images.unsplash.com/photo-1505764706515-aa95265c5abc?q=80&w=1600&auto=format&fit=crop';
+const streetTex = new THREE.TextureLoader().load(streetURL, ()=>{ streetTex.colorSpace=THREE.SRGBColorSpace; });
+const street = new THREE.Mesh(
+  new THREE.PlaneGeometry(10, 6),
+  new THREE.MeshBasicMaterial({map:streetTex})
+);
+// Placera “gatan” 0.5 m utanför glaset, lite högre än fönstrets överkant
+street.position.set(W/2 + RECESS + 0.5, SILL + WIN_H*0.7, -D/2);
+street.rotation.y = -Math.PI/2;
+scene.add(street);
+
+/* ======= Egna kamerakontroller ======= */
+let isDown=false, lastX=0, lastY=0;
+let radius=2.0, theta=0, phi=Math.PI/2.2;
+const rMin=1.0, rMax=6.0;
+function updateCam(){
+  const eps=0.001; phi=Math.max(eps, Math.min(Math.PI-eps, phi));
+  radius=Math.max(rMin, Math.min(rMax, radius));
+  const x=lookTarget.x + radius*Math.sin(phi)*Math.sin(theta);
+  const y=lookTarget.y + radius*Math.cos(phi);
+  const z=lookTarget.z + radius*Math.sin(phi)*Math.cos(theta);
+  camera.position.set(x,y,z); camera.lookAt(lookTarget);
+}
+renderer.domElement.addEventListener('pointerdown',e=>{isDown=true;lastX=e.clientX;lastY=e.clientY;});
+window.addEventListener('pointerup',()=>{isDown=false;});
+window.addEventListener('pointermove',e=>{
+  if(!isDown) return; const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
   const ROT=0.005; theta-=dx*ROT; phi-=dy*ROT; updateCam();
 },{passive:true});
-renderer.domElement.addEventListener('wheel', e=>{
+renderer.domElement.addEventListener('wheel',e=>{
   const ZOOM=0.0015; radius += e.deltaY*ZOOM*(radius*0.8+0.2); updateCam();
 },{passive:true});
-// touch
+// touch pinch/drag
 let lastDist=null;
-renderer.domElement.addEventListener('touchstart', e=>{
-  if(e.touches.length===1){ lastX=e.touches[0].clientX; lastY=e.touches[0].clientY; }
+renderer.domElement.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){lastX=e.touches[0].clientX;lastY=e.touches[0].clientY;}
   if(e.touches.length===2){
     const dx=e.touches[0].clientX-e.touches[1].clientX;
-    const dy=e.touches[0].clientY-e.touches[1].clientY;
-    lastDist=Math.hypot(dx,dy);
+    const dy=e.touches[0].clientY-e.touches[1].clientY; lastDist=Math.hypot(dx,dy);
   }
 },{passive:true});
-renderer.domElement.addEventListener('touchmove', e=>{
+renderer.domElement.addEventListener('touchmove',e=>{
   if(e.touches.length===1){
     const t=e.touches[0], dx=t.clientX-lastX, dy=t.clientY-lastY; lastX=t.clientX; lastY=t.clientY;
     const ROT=0.005; theta-=dx*ROT; phi-=dy*ROT; updateCam();
   } else if(e.touches.length===2){
-    const dx=e.touches[0].clientX-e.touches[1].clientX;
-    const dy=e.touches[0].clientY-e.touches[1].clientY;
-    const dist=Math.hypot(dx,dy);
-    if(lastDist!=null){ const ZOOM=0.003; radius -= (dist-lastDist)*ZOOM; updateCam(); }
+    const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
+    const dist=Math.hypot(dx,dy); if(lastDist!=null){ const ZOOM=0.003; radius -= (dist-lastDist)*ZOOM; updateCam(); }
     lastDist=dist;
   }
 },{passive:true});
-renderer.domElement.addEventListener('touchend', ()=>{ lastDist=null; }, {passive:true});
+renderer.domElement.addEventListener('touchend',()=>{lastDist=null;},{passive:true});
 updateCam();
 
-/* ======= Render-loop ======= */
-function loop(){
-  requestAnimationFrame(loop);
-  renderer.render(scene,camera);
-}
+/* ======= Render ======= */
+function loop(){ requestAnimationFrame(loop); renderer.render(scene,camera); }
 loop();
 
 /* ======= Resize ======= */
-addEventListener('resize', ()=>{
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight);
 });
 </script>
 </body>
