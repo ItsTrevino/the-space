@@ -2,14 +2,18 @@
 <html lang="sv">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>3D-rummet – interiör (utan controls)</title>
+<title>3D-rummet – interiör</title>
 <style>
   html,body{height:100%;margin:0;background:#111}
   canvas{display:block;width:100vw;height:100vh}
 </style>
 </head>
 <body>
+<!-- Three.js -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<!-- OrbitControls -->
+<script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+
 <script>
 const W=4, D=4.1, H=3;
 
@@ -17,7 +21,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xdddddd);
 
 const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
-camera.position.set(0, 1.5, 1.8);     // i rummet, lite framför mitten
+camera.position.set(0, 1.5, 1.8);     // i rummet
 camera.lookAt(0, 1.5, -1.5);
 
 const renderer = new THREE.WebGLRenderer({antialias:true});
@@ -47,18 +51,26 @@ leftW.rotation.y =  Math.PI/2; leftW.position.set(-W/2, H/2, -D/2); scene.add(le
 const rightW= new THREE.Mesh(new THREE.PlaneGeometry(D, H), matWall);
 rightW.rotation.y = -Math.PI/2; rightW.position.set( W/2, H/2, -D/2); scene.add(rightW);
 
-// Liten röd kub i mitten
+// Liten röd kub
 const box = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5),
   new THREE.MeshStandardMaterial({color:0xff3355}));
 box.position.set(0,0.25,-D/2); scene.add(box);
 
-function animate(){
-  requestAnimationFrame(animate);
-  box.rotation.y += 0.01;
-  renderer.render(scene,camera);
-}
-animate();
+// OrbitControls
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enablePan = false;
+controls.target.set(0, 1.5, -1.5);
 
+// Render-loop (EN loop som sköter både controls och render)
+function loop(){
+  requestAnimationFrame(loop);
+  box.rotation.y += 0.01;
+  controls.update();
+  renderer.render(scene, camera);
+}
+loop();
+
+// Resize
 addEventListener('resize', ()=>{
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
