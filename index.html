@@ -1,49 +1,47 @@
 <!doctype html>
 <html lang="sv">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>3D-test</title>
-<style>html,body,#app{margin:0;height:100%;background:#222}</style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Three test</title>
+<style>html,body,#app{height:100%;margin:0}#app{height:100vh}</style>
 </head>
 <body>
 <div id="app"></div>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script>
-const app = document.getElementById('app');
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0066ff);          // blå bakgrund
 
-const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
-camera.position.set(2.5,1.8,3.5);
+<!-- Ladda Three.js -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script>
+const el = document.getElementById('app');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0066ff); // blå bakgrund = vi ser att scenen ritas
+
+const camera = new THREE.PerspectiveCamera(60, el.clientWidth/el.clientHeight, 0.1, 100);
+camera.position.set(2.5, 1.8, 3.5);
 
 const renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(innerWidth, innerHeight);
-app.appendChild(renderer.domElement);
+renderer.setSize(el.clientWidth, el.clientHeight);
+el.appendChild(renderer.domElement);
 
-// Ljus
+// ljus + röd kub
 scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
-
-// Röd kub
 const box = new THREE.Mesh(
   new THREE.BoxGeometry(1,1,1),
   new THREE.MeshStandardMaterial({color:0xff0000})
 );
 scene.add(box);
 
-// Animation
-function animate(){
-  requestAnimationFrame(animate);
+function tick(){
   box.rotation.y += 0.01;
-  renderer.render(scene,camera);
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
 }
-animate();
+tick();
 
-// Responsiv
-addEventListener('resize',()=>{
-  camera.aspect = innerWidth/innerHeight;
+addEventListener('resize', () => {
+  camera.aspect = el.clientWidth/el.clientHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+  renderer.setSize(el.clientWidth, el.clientHeight);
 });
 </script>
 </body>
