@@ -66,18 +66,27 @@ wallShape.moveTo(-D/2,0); wallShape.lineTo(D/2,0); wallShape.lineTo(D/2,H);
 wallShape.lineTo(-D/2,H); wallShape.closePath();
 
 // 2) Två välvda fönsterhål (rätt orienterade)
-function archedPath(cx, bottomY, width, height){
-  const r=width/2, straightH=height-r, yTop=bottomY+straightH;
-  const p=new THREE.Path();
-  p.moveTo(cx - width/2, bottomY);
-  p.lineTo(cx + width/2, bottomY);
-  p.lineTo(cx + width/2, yTop);
-  p.absarc(cx, yTop, r, 0, Math.PI, true);     // uppåtgående halvcirkel
-  p.lineTo(cx - width/2, yTop);
+// ---------- HÅL: korrekt uppåt välvt fönster ----------
+function archedPath(cx, bottomY, width, height) {
+  const r = width/2;
+  const straightH = height - r;
+  const yTop = bottomY + straightH;
+
+  const p = new THREE.Path();
+  // börja nere vänster, medurs runt öppningen
+  p.moveTo(cx - width/2, bottomY);     // botten vänster
+  p.lineTo(cx + width/2, bottomY);     // botten höger
+  p.lineTo(cx + width/2, yTop);        // upp höger sida
+  // NYCKELN: rita toppen från PI -> 0 (medurs) så “kupolen” öppnar uppåt
+  p.absarc(cx, yTop, r, Math.PI, 0, true);
+  p.lineTo(cx - width/2, yTop);        // ned vänster sida
   p.closePath();
   return p;
 }
-const z1=-OFF_Z, z2=+OFF_Z;
+
+// lägg in hålen (samma Z-centra som tidigare)
+const z1 = -OFF_Z, z2 = +OFF_Z;
+wallShape.holes.length = 0; // töm ev. gamla
 wallShape.holes.push(archedPath(z1, F_SILL, F_BREDD, F_HOJD));
 wallShape.holes.push(archedPath(z2, F_SILL, F_BREDD, F_HOJD));
 
